@@ -1,10 +1,378 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>My GitHub Website</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Soundify — Advanced Player</title>
+  <style>
+    :root{
+      --bg:#0d0d0d; --muted:#9aa0a6; --accent:#1db954; --card:#141414; --glass:rgba(255,255,255,0.04);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Segoe UI,Helvetica,Arial;background:var(--bg);color:#e9ecef;display:flex;min-height:100vh}
+
+    /* Sidebar */
+    .sidebar{width:260px;padding:28px;background:linear-gradient(180deg,#000 0%,#0b0b0b 100%);border-right:1px solid rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:18px}
+    .logo{font-weight:800;color:var(--accent);font-size:26px}
+    nav a{color:var(--muted);text-decoration:none;padding:10px;border-radius:10px;display:block}
+    nav a:hover{background:var(--accent);color:#000}
+
+    /* Main */
+    .main{flex:1;padding:26px;display:flex;flex-direction:column;gap:18px}
+    .top{display:flex;gap:18px;align-items:center}
+
+    /* Upload card */
+    .upload{flex:1;padding:18px;border-radius:14px;background:linear-gradient(180deg,var(--card),#0f0f0f);border:1px solid rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:12px}
+    .drop{border:2px dashed rgba(255,255,255,0.05);padding:22px;border-radius:10px;text-align:center;color:var(--muted);cursor:pointer}
+    .drop.dragover{background:rgba(29,185,84,0.06);border-color:var(--accent);color:var(--accent)}
+    .controls{display:flex;gap:10px;align-items:center}
+    .small{font-size:13px;color:var(--muted)}
+
+    /* Playlist */
+    .playlist{width:420px;max-width:40%;min-width:320px;padding:14px;border-radius:14px;background:linear-gradient(180deg,#0f0f0f,#0b0b0b);border:1px solid rgba(255,255,255,0.03);overflow:auto}
+    .track{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;margin-bottom:8px;background:transparent}
+    .track:hover{background:rgba(255,255,255,0.02)}
+    .track .meta{flex:1}
+    .track .title{font-weight:600}
+    .track .sub{font-size:13px;color:var(--muted)}
+    .track .actions button{margin-left:8px}
+    .thumb{width:56px;height:56px;border-radius:8px;background:#222;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700}
+
+    /* Player bar */
+    .player{position:sticky;bottom:18px;padding:14px;border-radius:14px;background:linear-gradient(180deg,#0f0f0f,#0b0b0b);border:1px solid rgba(255,255,255,0.03);display:flex;gap:18px;align-items:center}
+    .big-controls{display:flex;gap:10px;align-items:center}
+    .btn{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:10px;border-radius:10px;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#000;border:none}
+    .progress{flex:1;display:flex;flex-direction:column;gap:6px}
+    .time{display:flex;justify-content:space-between;color:var(--muted);font-size:13px}
+
+    /* waveform */
+    canvas#wave{width:100%;height:64px;border-radius:8px;background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));}
+
+    /* Responsive */
+    @media (max-width:900px){
+      .sidebar{display:none}
+      .playlist{max-width:100%;width:100%}
+      .top{flex-direction:column}
+    }
+
+    /* tiny helpers */
+    .muted{color:var(--muted)}
+    input[type=range]{-webkit-appearance:none;background:transparent}
+    input[type=range]::-webkit-slider-thumb{appearance:none}
+
+  </style>
 </head>
 <body>
-  <h1>Hello, world!</h1>
-  <p>Welcome to my website hosted on GitHub Pages!</p>
+  <div class="sidebar">
+    <div class="logo">Soundify</div>
+    <nav>
+      <a href="#">Home</a>
+      <a href="#">Library</a>
+      <a href="#">Playlists</a>
+      <a href="#">Settings</a>
+    </nav>
+
+    <div class="small muted">Tip: drag & drop audio files here or click the upload area. Files stay local to your browser.</div>
+  </div>
+
+  <div class="main">
+    <div class="top">
+      <div class="upload">
+        <div id="drop" class="drop">Drop audio files here or <button id="browseBtn" class="btn" style="margin-left:8px">Browse</button></div>
+        <input id="fileInput" type="file" accept="audio/*" multiple style="display:none">
+
+        <div class="controls">
+          <div class="small muted">Volume</div>
+          <input id="masterVol" type="range" min="0" max="1" step="0.01" value="1" style="width:160px">
+
+          <button id="shuffleBtn" class="btn">Shuffle</button>
+          <button id="loopBtn" class="btn">Loop</button>
+
+          <div style="flex:1"></div>
+
+          <button id="saveBtn" class="btn">Save playlist (metadata only)</button>
+          <button id="loadBtn" class="btn">Load metadata</button>
+        </div>
+      </div>
+
+      <div class="playlist" id="playlist"></div>
+    </div>
+
+    <div style="min-height:120px">
+      <div class="player">
+        <div class="big-controls">
+          <button id="prevBtn" class="btn">⏮</button>
+          <button id="playBtn" class="btn primary">▶</button>
+          <button id="nextBtn" class="btn">⏭</button>
+          <button id="muteBtn" class="btn">🔊</button>
+        </div>
+
+        <div class="progress">
+          <div style="display:flex;gap:12px;align-items:center"><div id="currentTitle" style="min-width:220px;font-weight:700">No track</div><div class="muted" id="currentArtist"></div></div>
+          <canvas id="wave" height="64"></canvas>
+          <div style="display:flex;gap:12px;align-items:center">
+            <div class="time"><span id="curTime">0:00</span><span id="durTime">0:00</span></div>
+            <input id="seek" type="range" min="0" max="100" value="0">
+          </div>
+        </div>
+
+        <div style="width:160px;text-align:right;">
+          <div class="muted">Playlist</div>
+          <div id="playlistCount">0 tracks</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ======== State ========
+    const state = { tracks: [], current: -1, shuffled: false, loop: false };
+
+    // ======== Elements ========
+    const drop = document.getElementById('drop');
+    const fileInput = document.getElementById('fileInput');
+    const browseBtn = document.getElementById('browseBtn');
+    const playlistEl = document.getElementById('playlist');
+    const playBtn = document.getElementById('playBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const seek = document.getElementById('seek');
+    const curTime = document.getElementById('curTime');
+    const durTime = document.getElementById('durTime');
+    const currentTitle = document.getElementById('currentTitle');
+    const currentArtist = document.getElementById('currentArtist');
+    const playlistCount = document.getElementById('playlistCount');
+    const shuffleBtn = document.getElementById('shuffleBtn');
+    const loopBtn = document.getElementById('loopBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const loadBtn = document.getElementById('loadBtn');
+    const masterVol = document.getElementById('masterVol');
+    const wave = document.getElementById('wave');
+
+    // Hidden audio + audio context for visualizer
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
+    let audioCtx, analyser, srcNode;
+
+    function ensureAudioCtx(){
+      if (!audioCtx){
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        srcNode = audioCtx.createMediaElementSource(audio);
+        srcNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+      }
+    }
+
+    // ===== Drop + Upload handling =====
+    ['dragenter','dragover'].forEach(ev=>{
+      drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('dragover')});
+    });
+    ['dragleave','drop'].forEach(ev=>{
+      drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragover')});
+    });
+
+    drop.addEventListener('drop', (e)=>{
+      const files = Array.from(e.dataTransfer.files || []);
+      handleFiles(files);
+    });
+
+    browseBtn.addEventListener('click', ()=>fileInput.click());
+    fileInput.addEventListener('change', e=>handleFiles(Array.from(e.target.files||[])));
+
+    function handleFiles(files){
+      const audioFiles = files.filter(f=>f.type.startsWith('audio'));
+      audioFiles.forEach(f=>addTrack(f));
+      renderPlaylist();
+    }
+
+    // ===== Track handling =====
+    function addTrack(file){
+      const url = URL.createObjectURL(file);
+      const meta = { id: cryptoRandomId(), name: file.name, file, url, duration:0, art:null };
+      state.tracks.push(meta);
+
+      // preload to get duration
+      const a = new Audio();
+      a.src = url;
+      a.addEventListener('loadedmetadata', ()=>{
+        meta.duration = a.duration||0;
+        renderPlaylist();
+      });
+
+      // generate simple thumb
+      meta.art = generateThumb(file.name);
+    }
+
+    function cryptoRandomId(){return Math.random().toString(36).slice(2,9)}
+
+    function generateThumb(name){
+      const canvas = document.createElement('canvas');
+      canvas.width=140;canvas.height=140;const ctx=canvas.getContext('2d');
+      ctx.fillStyle='#121212';ctx.fillRect(0,0,140,140);
+      ctx.fillStyle=window.getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#1db954';
+      ctx.font='48px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      const initials = name.replace(/\.[^/.]+$/,"").trim().split(/\s+/).slice(0,2).map(s=>s[0].toUpperCase()).join('');
+      ctx.fillText(initials || 'S',70,72);
+      return canvas.toDataURL();
+    }
+
+    function renderPlaylist(){
+      playlistEl.innerHTML='';
+      state.tracks.forEach((t,idx)=>{
+        const el = document.createElement('div');
+        el.className='track';
+
+        const thumb = document.createElement('div');thumb.className='thumb';
+        const img = document.createElement('img');img.src=t.art;img.style.width='100%';img.style.height='100%';img.style.objectFit='cover';img.style.borderRadius='6px';thumb.appendChild(img);
+
+        const meta = document.createElement('div');meta.className='meta';
+        const title = document.createElement('div');title.className='title';title.textContent=t.name;
+        const sub = document.createElement('div');sub.className='sub';sub.textContent = t.duration?formatTime(t.duration):'loading...';
+        meta.appendChild(title);meta.appendChild(sub);
+
+        const actions = document.createElement('div');actions.className='actions';
+        const play = document.createElement('button');play.className='btn';play.textContent='Play';play.onclick=()=>playIndex(idx);
+        const remove = document.createElement('button');remove.className='btn';remove.textContent='Remove';remove.onclick=()=>{state.tracks.splice(idx,1);if(state.current===idx)stop();if(state.current>idx)state.current--;renderPlaylist();}
+        actions.appendChild(play);actions.appendChild(remove);
+
+        el.appendChild(thumb);el.appendChild(meta);el.appendChild(actions);
+        playlistEl.appendChild(el);
+      });
+      playlistCount.textContent = state.tracks.length+ (state.tracks.length===1?' track':' tracks');
+    }
+
+    function formatTime(s){if(!s||isNaN(s))return '0:00';const m=Math.floor(s/60);const sec=Math.floor(s%60).toString().padStart(2,'0');return `${m}:${sec}`}
+
+    // ===== Playback =====
+    function playIndex(i){
+      if(i<0||i>=state.tracks.length)return;
+      const t = state.tracks[i];
+      state.current = i;
+      audio.src = t.url;
+      currentTitle.textContent = t.name;
+      currentArtist.textContent = '';
+      ensureAudioCtx();
+      audio.play();
+      playBtn.textContent='⏸';
+    }
+
+    function playNext(){
+      if(state.shuffled){
+        const next = Math.floor(Math.random()*state.tracks.length);
+        playIndex(next);
+        return;
+      }
+      let next = state.current+1;
+      if(next>=state.tracks.length){
+        if(state.loop){playIndex(0);return;} else {stop();return}
+      }
+      playIndex(next);
+    }
+
+    function playPrev(){
+      let prev = state.current-1;
+      if(prev<0) prev = state.tracks.length-1;
+      playIndex(prev);
+    }
+
+    function stop(){audio.pause();audio.currentTime=0;playBtn.textContent='▶';currentTitle.textContent='No track';curTime.textContent='0:00';durTime.textContent='0:00';seek.value=0}
+
+    playBtn.addEventListener('click', ()=>{
+      if(!audio.src){ if(state.tracks.length) playIndex(0); return }
+      if(audio.paused) { audio.play(); playBtn.textContent='⏸'; } else { audio.pause(); playBtn.textContent='▶'; }
+    });
+    prevBtn.addEventListener('click', playPrev);
+    nextBtn.addEventListener('click', playNext);
+
+    audio.addEventListener('loadedmetadata', ()=>{ durTime.textContent = formatTime(audio.duration); });
+    audio.addEventListener('timeupdate', ()=>{ curTime.textContent = formatTime(audio.currentTime); if(audio.duration) seek.value = (audio.currentTime/audio.duration)*100; });
+    audio.addEventListener('ended', ()=>{ playNext(); });
+
+    seek.addEventListener('input', ()=>{ if(audio.duration) audio.currentTime = (seek.value/100)*audio.duration; });
+
+    muteBtn.addEventListener('click', ()=>{ audio.muted = !audio.muted; muteBtn.textContent = audio.muted? '🔈':'🔊' });
+    masterVol.addEventListener('input', ()=>{ audio.volume = masterVol.value; });
+
+    shuffleBtn.addEventListener('click', ()=>{ state.shuffled = !state.shuffled; shuffleBtn.style.background = state.shuffled? 'var(--accent)': 'transparent'; });
+    loopBtn.addEventListener('click', ()=>{ state.loop = !state.loop; loopBtn.style.background = state.loop? 'var(--accent)': 'transparent'; });
+
+    // ===== Visualizer =====
+    const ctx = wave.getContext('2d');
+    function drawWave(){
+      requestAnimationFrame(drawWave);
+      if(!analyser){ctx.clearRect(0,0,wave.width,wave.height);return}
+      const bufferLength = analyser.fftSize;
+      const data = new Uint8Array(bufferLength);
+      analyser.getByteTimeDomainData(data);
+      ctx.clearRect(0,0,wave.width,wave.height);
+      ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.fillRect(0,0,wave.width,wave.height);
+      ctx.lineWidth=2; ctx.strokeStyle='rgba(29,185,84,0.9)'; ctx.beginPath();
+      const slice = wave.width / bufferLength;
+      for(let i=0;i<bufferLength;i++){
+        const v = data[i]/128.0; const y = (v*wave.height)/2; if(i===0)ctx.moveTo(0,y); else ctx.lineTo(i*slice,y);
+      }
+      ctx.stroke();
+    }
+    function resizeCanvas(){ wave.width = wave.clientWidth * devicePixelRatio; wave.height = wave.clientHeight * devicePixelRatio; }
+    window.addEventListener('resize', resizeCanvas); resizeCanvas(); drawWave();
+
+    // Ensure audio context resumes on user gesture
+    document.addEventListener('click', ()=>{ if(audioCtx && audioCtx.state==='suspended') audioCtx.resume(); });
+
+    // ===== Save/Load playlist metadata (note: browser cannot store file binaries in localStorage)
+    saveBtn.addEventListener('click', ()=>{
+      const meta = state.tracks.map(t=>({id:t.id,name:t.name,duration:t.duration}));
+      localStorage.setItem('soundify_meta', JSON.stringify(meta));
+      alert('Saved playlist metadata to localStorage. Files are not saved for privacy/security reasons — re-upload files to restore playback.');
+    });
+    loadBtn.addEventListener('click', ()=>{
+      const raw = localStorage.getItem('soundify_meta');
+      if(!raw) return alert('No saved playlist metadata found');
+      const parsed = JSON.parse(raw);
+      // create placeholder entries — user must re-upload files to link
+      state.tracks = parsed.map(p=>({id:p.id,name:p.name,file:null,url:null,duration:p.duration,art:generateThumb(p.name)}));
+      renderPlaylist();
+      alert('Loaded metadata. To play, re-upload the matching files (names must match).');
+    });
+
+    // ===== Keyboard shortcuts =====
+    document.addEventListener('keydown', (e)=>{
+      if(e.code==='Space'){ e.preventDefault(); playBtn.click(); }
+      if(e.code==='ArrowRight'){ audio.currentTime = Math.min(audio.duration||0, (audio.currentTime||0)+5); }
+      if(e.code==='ArrowLeft'){ audio.currentTime = Math.max(0, (audio.currentTime||0)-5); }
+    });
+
+    // ===== Persist session (in-memory blobs) for this tab only =====
+    // Note: localStorage can't keep File objects. We keep them in state for current session only.
+
+    // ===== Initialize minimal demo tracks (copyright-free placeholder) =====
+    (function addDemo(){
+      // small embedded beep as placeholder (base64 wav) — just to show UI without user files
+      const beep = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=';
+      const demo = {id:cryptoRandomId(),name:'Demo silence',file:null,url:beep,duration:0,art:generateThumb('Demo')};
+      state.tracks.push(demo); renderPlaylist();
+    })();
+
+    // ===== Accessibility: announce current track via title changes =====
+    audio.addEventListener('play', ()=>{document.title = '▶ ' + (state.tracks[state.current]?.name||'Soundify');});
+    audio.addEventListener('pause', ()=>{document.title = '⏸ ' + (state.tracks[state.current]?.name||'Soundify');});
+
+    // When playing a file that matches a metadata-only item, try to match and replace url
+    function tryAutoMatch(file){
+      const name = file.name;
+      const found = state.tracks.find(t=>t.name===name);
+      if(found){ found.file = file; found.url = URL.createObjectURL(file); }
+      renderPlaylist();
+    }
+
+    // If user re-uploads files after loading metadata, try to match
+    fileInput.addEventListener('change', ()=>{ Array.from(fileInput.files||[]).forEach(f=>tryAutoMatch(f)); handleFiles(Array.from(fileInput.files||[])); });
+
+  </script>
 </body>
 </html>
